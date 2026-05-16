@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "Bash(git push *)",
+      "PowerShell(Start-Process \"C:\\\\edrVoz\\\\src-tauri\\\\target\\\\release\\\\edrvoz.exe\")",
+      "Bash(git commit *)"
+    ]
+  }
+}
