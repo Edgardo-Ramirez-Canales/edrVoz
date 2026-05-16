@@ -59,6 +59,21 @@ h1 {
   50% { opacity: 0.4; }
 }
 
+.last-recording {
+  color: #888;
+  font-size: 0.9em;
+  margin-top: 12px;
+}
+
+.error-indicator {
+  background: rgba(255, 150, 0, 0.1);
+  border: 2px solid orange;
+  padding: 12px 24px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  color: orange;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
