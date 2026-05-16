@@ -21,13 +21,6 @@ src-tauri/target
 shortcut_error.txt
 stderr.txt
 
-# Documentación interna
-INSTRUCCIONES.md
-IMPLEMENTATION_STATUS.md
-CLAUDE.md
-
-# Claude Code
-.claude/
 
 # Editor
 .vscode/*
