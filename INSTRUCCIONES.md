@@ -130,6 +130,35 @@ C:\edrVoz
 
 ---
 
+## Estado actual del proyecto (hasta donde se llegó en la sesión inicial)
+
+### Lo que está funcionando
+- App Tauri v2 compila y abre correctamente en Windows
+- Hotkey global `Ctrl+Shift+J` registrada con `tauri-plugin-global-shortcut`
+- Al presionar `Ctrl+Shift+J` la UI muestra el indicador "🎤 Recording..."
+- Al soltarlo regresa a "Press Ctrl+Shift+J to start recording"
+- El módulo `audio_capture.rs` existe pero **no está conectado aún** — captura audio en un buffer pero nadie lo llama todavía
+
+### Lo que FALTA implementar
+- El archivo resumen del proyecto (pendiente de compartir por el usuario) define el roadmap completo
+- En términos técnicos, los módulos pendientes probablemente incluyen:
+  - Conectar `AudioCapture` al hotkey: grabar mientras se mantiene `Ctrl+Shift+J`
+  - Enviar el audio capturado a un servicio de transcripción (Whisper, Azure, etc.)
+  - Mostrar el texto transcrito en la UI o pegarlo en el cursor activo
+  - Manejo de errores y edge cases (sin micrófono, permisos, etc.)
+
+### Decisiones tomadas
+- **Proyecto 100% Windows nativo** — NO usar WSL para compilar ni desarrollar
+- **Directorio definitivo:** `C:\edrVoz`
+- **Hotkey:** `Ctrl+Shift+J` (Win+J estaba ocupado por otra app del sistema)
+- `hotkey.rs` quedó en el proyecto pero **ya no se usa** — fue reemplazado por el plugin. Se puede eliminar cuando se quiera limpiar.
+
+### Contexto para la próxima sesión de Claude
+Al abrir Claude desde `C:\edrVoz`, puedes decirle:
+> "Lee el archivo INSTRUCCIONES.md para entender el estado del proyecto y luego revisa el archivo resumen para planificar lo que falta implementar."
+
+---
+
 ## Git
 
 ```powershell
