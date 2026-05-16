@@ -51,4 +51,4 @@ El instalador queda en `src-tauri/target/release/bundle/`.
 
 ## Estado del proyecto
 
-En desarrollo activo. Ver estado detallado de implementación en `.claude/memory/status.md`.
+En desarrollo activo.
