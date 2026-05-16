@@ -21,6 +21,10 @@ src-tauri/target
 shortcut_error.txt
 stderr.txt
 
+# Documentación interna
+INSTRUCCIONES.md
+IMPLEMENTATION_STATUS.md
+
 # Editor
 .vscode/*
 !.vscode/extensions.json
