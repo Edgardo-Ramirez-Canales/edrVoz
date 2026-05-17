@@ -48,18 +48,7 @@ pub fn save(app: &tauri::AppHandle, settings: &Settings) -> Result<(), String> {
     std::fs::write(path, content).map_err(|e| e.to_string())
 }
 
-// Lee la API key desde variable de entorno o desde el archivo config.env
-pub fn load_api_key(app: &tauri::AppHandle) -> Option<String> {
-    // Prioridad 1: variable de entorno del sistema
-    if let Ok(key) = std::env::var("OPENAI_API_KEY") {
-        let key = key.trim().to_string();
-        if !key.is_empty() {
-            return Some(key);
-        }
-    }
-
-    // Prioridad 2: archivo config.env en AppData\Local\edrvoz\
-    let content = std::fs::read_to_string(config_file_path(app)).ok()?;
+pub fn parse_api_key_from_str(content: &str) -> Option<String> {
     for line in content.lines() {
         let line = line.trim();
         if line.starts_with('#') || line.is_empty() {
@@ -72,8 +61,71 @@ pub fn load_api_key(app: &tauri::AppHandle) -> Option<String> {
             }
         }
     }
-
     None
+}
+
+// Lee la API key desde variable de entorno o desde el archivo config.env
+pub fn load_api_key(app: &tauri::AppHandle) -> Option<String> {
+    // Prioridad 1: variable de entorno del sistema
+    if let Ok(key) = std::env::var("OPENAI_API_KEY") {
+        let key = key.trim().to_string();
+        if !key.is_empty() {
+            return Some(key);
+        }
+    }
+
+    // Prioridad 2: archivo config.env junto al ejecutable
+    let content = std::fs::read_to_string(config_file_path(app)).ok()?;
+    parse_api_key_from_str(&content)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_api_key_simple() {
+        let content = "OPENAI_API_KEY=sk-test123\n";
+        assert_eq!(parse_api_key_from_str(content), Some("sk-test123".to_string()));
+    }
+
+    #[test]
+    fn parses_api_key_with_quotes() {
+        let content = "OPENAI_API_KEY=\"sk-test123\"";
+        assert_eq!(parse_api_key_from_str(content), Some("sk-test123".to_string()));
+    }
+
+    #[test]
+    fn ignores_comments_and_blank_lines() {
+        let content = "# Configuracion\n\nOPENAI_API_KEY=sk-abc\n";
+        assert_eq!(parse_api_key_from_str(content), Some("sk-abc".to_string()));
+    }
+
+    #[test]
+    fn returns_none_for_empty_value() {
+        let content = "OPENAI_API_KEY=\n";
+        assert_eq!(parse_api_key_from_str(content), None);
+    }
+
+    #[test]
+    fn returns_none_when_key_absent() {
+        let content = "# sin API key\nOTRA_VAR=valor\n";
+        assert_eq!(parse_api_key_from_str(content), None);
+    }
+
+    #[test]
+    fn settings_default_mode_is_api() {
+        let s = Settings::default();
+        assert!(matches!(s.mode, TranscriptionMode::Api));
+    }
+
+    #[test]
+    fn settings_roundtrip_json() {
+        let original = Settings { mode: TranscriptionMode::Local };
+        let json = serde_json::to_string(&original).unwrap();
+        let parsed: Settings = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed.mode, TranscriptionMode::Local));
+    }
 }
 
 // Crea el archivo config.env con plantilla si no existe

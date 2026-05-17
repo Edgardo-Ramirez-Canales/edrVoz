@@ -76,3 +76,40 @@ fn encode_wav(samples: &[f32]) -> Result<Vec<u8>, String> {
     writer.finalize().map_err(|e| e.to_string())?;
     Ok(cursor.into_inner())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_wav_has_valid_riff_header() {
+        let samples = vec![0.0f32; 16000]; // 1 segundo de silencio
+        let wav = encode_wav(&samples).unwrap();
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
+        assert_eq!(&wav[12..16], b"fmt ");
+    }
+
+    #[test]
+    fn encode_wav_correct_sample_rate_in_header() {
+        let samples = vec![0.0f32; 100];
+        let wav = encode_wav(&samples).unwrap();
+        // El sample rate está en bytes 24-27 (little-endian)
+        let sample_rate = u32::from_le_bytes([wav[24], wav[25], wav[26], wav[27]]);
+        assert_eq!(sample_rate, 16000);
+    }
+
+    #[test]
+    fn encode_wav_clamps_out_of_range_samples() {
+        let samples = vec![2.0f32, -2.0f32]; // fuera del rango [-1.0, 1.0]
+        let wav = encode_wav(&samples).unwrap();
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert!(wav.len() > 44); // header (44 bytes) + datos
+    }
+
+    #[test]
+    fn encode_wav_empty_input_is_valid() {
+        let wav = encode_wav(&[]).unwrap();
+        assert_eq!(&wav[0..4], b"RIFF");
+    }
+}

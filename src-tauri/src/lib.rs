@@ -60,6 +60,34 @@ async fn download_model() -> Result<(), String> {
     Err("Próximamente disponible".to_string())
 }
 
+async fn do_transcribe(app: tauri::AppHandle, buffer: Vec<f32>) {
+    let start = std::time::Instant::now();
+    let s = settings::load(&app);
+    let api_key = settings::load_api_key(&app);
+    match transcription::transcribe(buffer, &s.mode, api_key.as_deref()).await {
+        Ok(text) => {
+            eprintln!("[EDR Voz] Transcripción completada en {}ms", start.elapsed().as_millis());
+            paste::paste_text(&text);
+            let _ = app.emit("transcription-ready", text);
+        }
+        Err(e) => {
+            let _ = app.emit("transcription-error", e);
+        }
+    }
+}
+
+#[tauri::command]
+async fn force_stop_recording(app: tauri::AppHandle) {
+    let capture = AUDIO.lock().unwrap().take();
+    if let Some(capture) = capture {
+        let buffer = capture.stop_and_get_buffer();
+        *LAST_BUFFER.lock().unwrap() = buffer.clone();
+        let _ = app.emit("recording-stopped", ());
+        let _ = app.emit("transcribing", ());
+        do_transcribe(app, buffer).await;
+    }
+}
+
 #[tauri::command]
 fn get_recording_buffer() -> Vec<f32> {
     LAST_BUFFER.lock().unwrap().clone()
@@ -100,17 +128,7 @@ pub fn run() {
 
                             let app_clone = app.clone();
                             tauri::async_runtime::spawn(async move {
-                                let s = settings::load(&app_clone);
-                                let api_key = settings::load_api_key(&app_clone);
-                                match transcription::transcribe(buffer, &s.mode, api_key.as_deref()).await {
-                                    Ok(text) => {
-                                        paste::paste_text(&text);
-                                        let _ = app_clone.emit("transcription-ready", text);
-                                    }
-                                    Err(e) => {
-                                        let _ = app_clone.emit("transcription-error", e);
-                                    }
-                                }
+                                do_transcribe(app_clone, buffer).await;
                             });
                         }
                     }
@@ -127,6 +145,7 @@ pub fn run() {
             download_model,
             get_recording_buffer,
             clear_recording,
+            force_stop_recording,
         ])
         .setup(|app| {
             settings::ensure_config_file(&app.handle());

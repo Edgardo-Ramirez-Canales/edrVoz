@@ -100,6 +100,14 @@ function App() {
     return () => clearTimeout(timer);
   }, [error]);
 
+  const MAX_RECORDING_SECS = 60;
+
+  useEffect(() => {
+    if (isRecording && recordingDuration >= MAX_RECORDING_SECS) {
+      invoke("force_stop_recording");
+    }
+  }, [isRecording, recordingDuration]);
+
   const handleModeChange = async (mode: "api" | "local") => {
     setSettings({ mode });
     await invoke("save_settings", { mode });
@@ -233,6 +241,11 @@ function App() {
           <p className="text-4xl font-bold font-mono m-0 tracking-wide text-white">
             {recordingDuration.toFixed(1)}s
           </p>
+          {recordingDuration >= MAX_RECORDING_SECS - 10 && (
+            <p className="text-amber-400 text-xs mt-2 m-0">
+              Límite: {Math.max(0, MAX_RECORDING_SECS - Math.floor(recordingDuration))}s restantes
+            </p>
+          )}
         </div>
       ) : isTranscribing ? (
         <div className="flex flex-col items-center gap-3 py-6 text-gray-500">
