@@ -25,6 +25,10 @@ function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    invoke("set_transparent_background");
+  }, []);
+
+  useEffect(() => {
     const unlisteners: (() => void)[] = [];
     const setup = async () => {
       unlisteners.push(

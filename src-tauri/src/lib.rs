@@ -12,6 +12,37 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 
+/// Recorta la ventana Win32 a la forma exacta de la píldora usando SetWindowRgn.
+/// Esto elimina las esquinas del rectángulo 260×80, haciendo que solo la píldora sea visible.
+/// No depende de WebView2 — opera a nivel de OS antes de que WebView2 renderice nada.
+#[cfg(target_os = "windows")]
+fn apply_pill_region(window: &tauri::WebviewWindow, scale: f64) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    let Ok(handle) = window.window_handle() else { return };
+    let RawWindowHandle::Win32(raw) = handle.as_ref() else { return };
+    let hwnd = raw.hwnd.get() as isize;
+
+    // Píldora: 240×52 lógicos, centrada en 260×80 → convertir a pixels físicos
+    let pill_w = (240.0 * scale).round() as i32;
+    let pill_h = (52.0 * scale).round() as i32;
+    let win_w  = (260.0 * scale).round() as i32;
+    let win_h  = (80.0  * scale).round() as i32;
+    let x = (win_w - pill_w) / 2;
+    let y = (win_h - pill_h) / 2;
+    let r = pill_h;
+
+    unsafe {
+        #[link(name = "gdi32")]
+        extern "system" { fn CreateRoundRectRgn(x1: i32, y1: i32, x2: i32, y2: i32, cx: i32, cy: i32) -> isize; }
+        #[link(name = "user32")]
+        extern "system" { fn SetWindowRgn(hwnd: isize, hrgn: isize, redraw: i32) -> i32; }
+
+        let rgn = CreateRoundRectRgn(x, y, x + pill_w, y + pill_h, r, r);
+        SetWindowRgn(hwnd, rgn, 1);
+    }
+}
+
 static AUDIO: LazyLock<Mutex<Option<AudioCapture>>> = LazyLock::new(|| Mutex::new(None));
 static LAST_BUFFER: LazyLock<Mutex<Vec<f32>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 static SESSION: AtomicU32 = AtomicU32::new(0);
@@ -60,6 +91,13 @@ fn get_model_status() -> &'static str {
 #[tauri::command]
 async fn download_model() -> Result<(), String> {
     Err("Próximamente disponible".to_string())
+}
+
+#[tauri::command]
+fn set_transparent_background(app: tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.set_background_color(Some(tauri::webview::Color(0, 0, 0, 0)));
+    }
 }
 
 #[tauri::command]
@@ -128,8 +166,9 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        // Mostrar el HUD sin robar el foco de la ventana activa del usuario
+                        // WebView2 ya está inicializado aquí — set_background_color funciona
                         if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.set_background_color(Some(tauri::webview::Color(0, 0, 0, 0)));
                             let _ = window.show();
                         }
                         let mut audio = AUDIO.lock().unwrap();
@@ -179,6 +218,7 @@ pub fn run() {
             force_stop_recording,
             hide_window,
             cancel_recording,
+            set_transparent_background,
         ])
         .setup(|app| {
             env_logger::Builder::new()
@@ -190,8 +230,6 @@ pub fn run() {
 
             let window = app.get_webview_window("main").expect("ventana main no encontrada");
 
-            // Forzar fondo transparente en WebView2 (elimina el cuadrado semitransparente)
-            let _ = window.set_background_color(Some(tauri::webview::Color(0, 0, 0, 0)));
 
             // Posicionar centrado horizontalmente, 80px sobre la taskbar
             if let Ok(Some(monitor)) = window.primary_monitor() {
@@ -202,6 +240,10 @@ pub fn run() {
                 let x = (size.width as f64 / scale - win_w) / 2.0;
                 let y = size.height as f64 / scale - win_h - 80.0;
                 let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+
+                // Recortar la ventana a la forma de la píldora a nivel Win32
+                #[cfg(target_os = "windows")]
+                apply_pill_region(&window, scale);
             }
 
             let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyJ);
