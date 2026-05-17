@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod audio_capture;
+#[cfg(target_os = "windows")]
+mod native_hud;
 mod paste;
 mod settings;
 mod transcription;
@@ -19,24 +21,32 @@ use tauri_plugin_opener::OpenerExt;
 fn apply_pill_region(window: &tauri::WebviewWindow, scale: f64) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-    let Ok(handle) = window.window_handle() else { return };
-    let RawWindowHandle::Win32(raw) = handle.as_ref() else { return };
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+    let RawWindowHandle::Win32(raw) = handle.as_ref() else {
+        return;
+    };
     let hwnd = raw.hwnd.get() as isize;
 
     // Píldora: 240×52 lógicos, centrada en 260×80 → convertir a pixels físicos
     let pill_w = (240.0 * scale).round() as i32;
     let pill_h = (52.0 * scale).round() as i32;
-    let win_w  = (260.0 * scale).round() as i32;
-    let win_h  = (80.0  * scale).round() as i32;
+    let win_w = (260.0 * scale).round() as i32;
+    let win_h = (80.0 * scale).round() as i32;
     let x = (win_w - pill_w) / 2;
     let y = (win_h - pill_h) / 2;
     let r = pill_h;
 
     unsafe {
         #[link(name = "gdi32")]
-        extern "system" { fn CreateRoundRectRgn(x1: i32, y1: i32, x2: i32, y2: i32, cx: i32, cy: i32) -> isize; }
+        extern "system" {
+            fn CreateRoundRectRgn(x1: i32, y1: i32, x2: i32, y2: i32, cx: i32, cy: i32) -> isize;
+        }
         #[link(name = "user32")]
-        extern "system" { fn SetWindowRgn(hwnd: isize, hrgn: isize, redraw: i32) -> i32; }
+        extern "system" {
+            fn SetWindowRgn(hwnd: isize, hrgn: isize, redraw: i32) -> i32;
+        }
 
         let rgn = CreateRoundRectRgn(x, y, x + pill_w, y + pill_h, r, r);
         SetWindowRgn(hwnd, rgn, 1);
@@ -102,6 +112,9 @@ fn set_transparent_background(app: tauri::AppHandle) {
 
 #[tauri::command]
 fn hide_window(app: tauri::AppHandle) {
+    #[cfg(target_os = "windows")]
+    native_hud::hide();
+
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.hide();
     }
@@ -111,24 +124,51 @@ fn hide_window(app: tauri::AppHandle) {
 fn cancel_recording() {
     drop(AUDIO.lock().unwrap().take());
     LAST_BUFFER.lock().unwrap().clear();
+
+    #[cfg(target_os = "windows")]
+    native_hud::hide();
+}
+
+#[cfg(target_os = "windows")]
+fn hide_native_hud_after(ms: u64) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(ms));
+        native_hud::hide();
+    });
 }
 
 async fn do_transcribe(app: tauri::AppHandle, buffer: Vec<f32>, session: u32) {
     let s = settings::load(&app);
     let mode = format!("{:?}", s.mode).to_lowercase();
-    log::info!("[sesión {session}] Transcripción iniciada — {} samples, modo: {mode}", buffer.len());
+    log::info!(
+        "[sesión {session}] Transcripción iniciada — {} samples, modo: {mode}",
+        buffer.len()
+    );
 
     let start = std::time::Instant::now();
     let api_key = settings::load_api_key(&app);
     match transcription::run(buffer, &s.mode, api_key).await {
         Ok(text) => {
             let elapsed = start.elapsed().as_millis();
-            log::info!("[sesión {session}] Transcripción completada en {elapsed}ms ({} chars)", text.len());
+            log::info!(
+                "[sesión {session}] Transcripción completada en {elapsed}ms ({} chars)",
+                text.len()
+            );
             paste::paste_text(&text);
+            #[cfg(target_os = "windows")]
+            {
+                native_hud::show_ready();
+                hide_native_hud_after(2500);
+            }
             let _ = app.emit("transcription-ready", text);
         }
         Err(e) => {
             log::error!("[sesión {session}] Error en transcripción: {e}");
+            #[cfg(target_os = "windows")]
+            {
+                native_hud::show_error();
+                hide_native_hud_after(4000);
+            }
             let _ = app.emit("transcription-error", e);
         }
     }
@@ -144,6 +184,8 @@ async fn force_stop_recording(app: tauri::AppHandle) {
         *LAST_BUFFER.lock().unwrap() = buffer.clone();
         let _ = app.emit("recording-stopped", ());
         let _ = app.emit("transcribing", ());
+        #[cfg(target_os = "windows")]
+        native_hud::show_transcribing();
         do_transcribe(app, buffer, session).await;
     }
 }
@@ -166,11 +208,12 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        // WebView2 ya está inicializado aquí — set_background_color funciona
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.set_background_color(Some(tauri::webview::Color(0, 0, 0, 0)));
-                            let _ = window.show();
+                            let _ = window.hide();
                         }
+                        #[cfg(target_os = "windows")]
+                        native_hud::show_recording();
+
                         let mut audio = AUDIO.lock().unwrap();
                         if audio.is_none() {
                             match AudioCapture::new() {
@@ -182,6 +225,11 @@ pub fn run() {
                                 }
                                 Err(e) => {
                                     log::error!("Error al iniciar captura de audio: {e}");
+                                    #[cfg(target_os = "windows")]
+                                    {
+                                        native_hud::show_error();
+                                        hide_native_hud_after(4000);
+                                    }
                                     let _ = app.emit("recording-error", e);
                                 }
                             }
@@ -191,10 +239,15 @@ pub fn run() {
                         if let Some(capture) = capture {
                             let session = SESSION.load(Ordering::Relaxed);
                             let buffer = capture.stop_and_get_buffer();
-                            log::info!("[sesión {session}] Grabación detenida — {} samples", buffer.len());
+                            log::info!(
+                                "[sesión {session}] Grabación detenida — {} samples",
+                                buffer.len()
+                            );
                             *LAST_BUFFER.lock().unwrap() = buffer.clone();
                             let _ = app.emit("recording-stopped", ());
                             let _ = app.emit("transcribing", ());
+                            #[cfg(target_os = "windows")]
+                            native_hud::show_transcribing();
 
                             let app_clone = app.clone();
                             tauri::async_runtime::spawn(async move {
@@ -228,8 +281,9 @@ pub fn run() {
             log::info!("EDR Voz iniciando");
             settings::ensure_config_file(&app.handle());
 
-            let window = app.get_webview_window("main").expect("ventana main no encontrada");
-
+            let window = app
+                .get_webview_window("main")
+                .expect("ventana main no encontrada");
 
             // Posicionar centrado horizontalmente, 80px sobre la taskbar
             if let Ok(Some(monitor)) = window.primary_monitor() {
@@ -243,7 +297,10 @@ pub fn run() {
 
                 // Recortar la ventana a la forma de la píldora a nivel Win32
                 #[cfg(target_os = "windows")]
-                apply_pill_region(&window, scale);
+                {
+                    apply_pill_region(&window, scale);
+                    native_hud::init(scale);
+                }
             }
 
             let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyJ);

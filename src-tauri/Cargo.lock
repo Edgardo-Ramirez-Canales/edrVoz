@@ -1038,7 +1038,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "edrvoz"
-version = "2.1.0"
+version = "2.2.3"
 dependencies = [
  "arboard",
  "cpal",
@@ -1055,6 +1055,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-opener",
  "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
