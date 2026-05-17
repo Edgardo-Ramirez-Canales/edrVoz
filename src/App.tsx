@@ -3,6 +3,22 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
+function parseError(msg: string): { icon: string; hint: string | null } {
+  if (msg.includes("input device") || msg.includes("No input"))
+    return { icon: "🎙️", hint: "Verifica que el micrófono esté conectado y con permisos." };
+  if (msg.includes("API Key") || msg.includes("config.env"))
+    return { icon: "🔑", hint: "Abre el archivo de configuración y agrega tu API Key de OpenAI." };
+  if (msg.includes("conexión"))
+    return { icon: "🌐", hint: "Verifica tu conexión a internet." };
+  if (msg.includes("No hay audio"))
+    return { icon: "🎤", hint: "Mantén presionado Ctrl+Shift+J mientras hablas." };
+  if (msg.includes("Modo local"))
+    return { icon: "💻", hint: "Cambia a modo Online (API) o descarga el modelo local." };
+  if (msg.includes("Error de API"))
+    return { icon: "🔴", hint: "Revisa que tu API Key sea válida y tenga crédito disponible." };
+  return { icon: "⚠️", hint: null };
+}
+
 interface Settings {
   mode: "api" | "local";
 }
@@ -77,6 +93,12 @@ function App() {
     }, 100);
     return () => clearInterval(interval);
   }, [isRecording]);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => setError(null), 6000);
+    return () => clearTimeout(timer);
+  }, [error]);
 
   const handleModeChange = async (mode: "api" | "local") => {
     setSettings({ mode });
@@ -182,11 +204,25 @@ function App() {
       <hr className="border-t border-gray-800 my-1" />
 
       {/* Error */}
-      {error && (
-        <div className="bg-amber-950 border border-amber-700 px-4 py-3 rounded-lg text-amber-400 text-sm">
-          <p className="m-0">⚠️ {error}</p>
-        </div>
-      )}
+      {error && (() => {
+        const { icon, hint } = parseError(error);
+        return (
+          <div className="flex items-start gap-3 bg-amber-950 border border-amber-700 px-4 py-3 rounded-lg text-sm">
+            <span className="text-base mt-0.5 shrink-0">{icon}</span>
+            <div className="flex-1 min-w-0">
+              <p className="m-0 text-amber-400 font-medium">{error}</p>
+              {hint && <p className="m-0 mt-1 text-amber-600 text-xs">{hint}</p>}
+            </div>
+            <button
+              className="text-amber-700 hover:text-amber-400 cursor-pointer transition-colors shrink-0 text-base leading-none"
+              onClick={() => setError(null)}
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Estado principal */}
       {isRecording ? (
