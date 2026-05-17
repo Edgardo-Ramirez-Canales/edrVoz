@@ -1,5 +1,11 @@
 # EDR Voz
 
+> **¿Solo quieres usar la herramienta?**
+> No necesitas instalar nada ni compilar el proyecto.
+> Descarga la carpeta [`distribucion/EDR-Voz-v0.1.0/`](distribucion/EDR-Voz-v0.1.0/),
+> agrega tu API Key de OpenAI en el archivo `config.env` y sigue las instrucciones del `LEEME.txt`.
+> Eso es todo.
+
 Aplicación de escritorio para Windows que permite dictar texto por voz usando un hotkey global. Presiona `Ctrl+Shift+J`, habla, suelta la tecla y el texto transcrito aparece donde esté el cursor.
 
 ## Requisitos
