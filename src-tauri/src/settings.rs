@@ -48,6 +48,10 @@ pub fn save(app: &tauri::AppHandle, settings: &Settings) -> Result<(), String> {
     std::fs::write(path, content).map_err(|e| e.to_string())
 }
 
+pub fn is_valid_api_key(key: &str) -> bool {
+    key.starts_with("sk-") && key.len() > 20
+}
+
 pub fn parse_api_key_from_str(content: &str) -> Option<String> {
     for line in content.lines() {
         let line = line.trim();
@@ -70,13 +74,20 @@ pub fn load_api_key(app: &tauri::AppHandle) -> Option<String> {
     if let Ok(key) = std::env::var("OPENAI_API_KEY") {
         let key = key.trim().to_string();
         if !key.is_empty() {
+            if !is_valid_api_key(&key) {
+                log::warn!("OPENAI_API_KEY en variable de entorno tiene formato inválido (esperado: sk-...)");
+            }
             return Some(key);
         }
     }
 
     // Prioridad 2: archivo config.env junto al ejecutable
     let content = std::fs::read_to_string(config_file_path(app)).ok()?;
-    parse_api_key_from_str(&content)
+    let key = parse_api_key_from_str(&content)?;
+    if !is_valid_api_key(&key) {
+        log::warn!("OPENAI_API_KEY en config.env tiene formato inválido (esperado: sk-...)");
+    }
+    Some(key)
 }
 
 #[cfg(test)]
@@ -111,6 +122,14 @@ mod tests {
     fn returns_none_when_key_absent() {
         let content = "# sin API key\nOTRA_VAR=valor\n";
         assert_eq!(parse_api_key_from_str(content), None);
+    }
+
+    #[test]
+    fn api_key_validation() {
+        assert!(is_valid_api_key("sk-abc123def456ghi789jkl"));
+        assert!(!is_valid_api_key("sk-short"));
+        assert!(!is_valid_api_key("invalid-key-format"));
+        assert!(!is_valid_api_key(""));
     }
 
     #[test]

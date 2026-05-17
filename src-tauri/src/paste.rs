@@ -10,7 +10,7 @@ pub fn paste_text(text: &str) {
     let text = text.to_string();
     thread::spawn(move || {
         if let Err(e) = try_paste(&text) {
-            eprintln!("Error al pegar texto: {}", e);
+            log::error!("Error al pegar texto en ventana activa: {e}");
         }
     });
 }

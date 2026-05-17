@@ -6,6 +6,7 @@ mod settings;
 mod transcription;
 
 use audio_capture::AudioCapture;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{LazyLock, Mutex};
 use tauri::Emitter;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -13,6 +14,7 @@ use tauri_plugin_opener::OpenerExt;
 
 static AUDIO: LazyLock<Mutex<Option<AudioCapture>>> = LazyLock::new(|| Mutex::new(None));
 static LAST_BUFFER: LazyLock<Mutex<Vec<f32>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+static SESSION: AtomicU32 = AtomicU32::new(0);
 
 #[tauri::command]
 fn get_settings(app: tauri::AppHandle) -> settings::Settings {
@@ -60,17 +62,22 @@ async fn download_model() -> Result<(), String> {
     Err("Próximamente disponible".to_string())
 }
 
-async fn do_transcribe(app: tauri::AppHandle, buffer: Vec<f32>) {
-    let start = std::time::Instant::now();
+async fn do_transcribe(app: tauri::AppHandle, buffer: Vec<f32>, session: u32) {
     let s = settings::load(&app);
+    let mode = format!("{:?}", s.mode).to_lowercase();
+    log::info!("[sesión {session}] Transcripción iniciada — {} samples, modo: {mode}", buffer.len());
+
+    let start = std::time::Instant::now();
     let api_key = settings::load_api_key(&app);
     match transcription::run(buffer, &s.mode, api_key).await {
         Ok(text) => {
-            eprintln!("[EDR Voz] Transcripción completada en {}ms", start.elapsed().as_millis());
+            let elapsed = start.elapsed().as_millis();
+            log::info!("[sesión {session}] Transcripción completada en {elapsed}ms ({} chars)", text.len());
             paste::paste_text(&text);
             let _ = app.emit("transcription-ready", text);
         }
         Err(e) => {
+            log::error!("[sesión {session}] Error en transcripción: {e}");
             let _ = app.emit("transcription-error", e);
         }
     }
@@ -80,11 +87,13 @@ async fn do_transcribe(app: tauri::AppHandle, buffer: Vec<f32>) {
 async fn force_stop_recording(app: tauri::AppHandle) {
     let capture = AUDIO.lock().unwrap().take();
     if let Some(capture) = capture {
+        let session = SESSION.load(Ordering::Relaxed);
+        log::warn!("[sesión {session}] Grabación detenida automáticamente por límite de tiempo");
         let buffer = capture.stop_and_get_buffer();
         *LAST_BUFFER.lock().unwrap() = buffer.clone();
         let _ = app.emit("recording-stopped", ());
         let _ = app.emit("transcribing", ());
-        do_transcribe(app, buffer).await;
+        do_transcribe(app, buffer, session).await;
     }
 }
 
@@ -110,10 +119,13 @@ pub fn run() {
                         if audio.is_none() {
                             match AudioCapture::new() {
                                 Ok(capture) => {
+                                    let session = SESSION.fetch_add(1, Ordering::Relaxed);
+                                    log::info!("[sesión {session}] Grabación iniciada");
                                     *audio = Some(capture);
                                     let _ = app.emit("recording-started", ());
                                 }
                                 Err(e) => {
+                                    log::error!("Error al iniciar captura de audio: {e}");
                                     let _ = app.emit("recording-error", e);
                                 }
                             }
@@ -121,14 +133,16 @@ pub fn run() {
                     } else if event.state() == ShortcutState::Released {
                         let capture = AUDIO.lock().unwrap().take();
                         if let Some(capture) = capture {
+                            let session = SESSION.load(Ordering::Relaxed);
                             let buffer = capture.stop_and_get_buffer();
+                            log::info!("[sesión {session}] Grabación detenida — {} samples", buffer.len());
                             *LAST_BUFFER.lock().unwrap() = buffer.clone();
                             let _ = app.emit("recording-stopped", ());
                             let _ = app.emit("transcribing", ());
 
                             let app_clone = app.clone();
                             tauri::async_runtime::spawn(async move {
-                                do_transcribe(app_clone, buffer).await;
+                                do_transcribe(app_clone, buffer, session).await;
                             });
                         }
                     }
@@ -148,6 +162,11 @@ pub fn run() {
             force_stop_recording,
         ])
         .setup(|app| {
+            env_logger::Builder::new()
+                .filter_level(log::LevelFilter::Info)
+                .format_timestamp_secs()
+                .init();
+            log::info!("EDR Voz iniciando");
             settings::ensure_config_file(&app.handle());
             let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyJ);
             if let Err(e) = app.global_shortcut().register(shortcut) {

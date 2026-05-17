@@ -30,7 +30,7 @@ impl AudioCapture {
                     let mut buf = buffer_clone.lock().unwrap();
                     buf.extend_from_slice(data);
                 },
-                |err| eprintln!("Stream error: {}", err),
+                |err| log::error!("Error en stream de audio: {err}"),
                 None,
             )
             .map_err(|e| e.to_string())?;
