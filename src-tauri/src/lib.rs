@@ -64,7 +64,7 @@ async fn do_transcribe(app: tauri::AppHandle, buffer: Vec<f32>) {
     let start = std::time::Instant::now();
     let s = settings::load(&app);
     let api_key = settings::load_api_key(&app);
-    match transcription::transcribe(buffer, &s.mode, api_key.as_deref()).await {
+    match transcription::run(buffer, &s.mode, api_key).await {
         Ok(text) => {
             eprintln!("[EDR Voz] Transcripción completada en {}ms", start.elapsed().as_millis());
             paste::paste_text(&text);
