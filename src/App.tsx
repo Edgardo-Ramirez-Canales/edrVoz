@@ -25,10 +25,6 @@ function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    invoke("set_transparent_background");
-  }, []);
-
-  useEffect(() => {
     const unlisteners: (() => void)[] = [];
     const setup = async () => {
       unlisteners.push(
@@ -81,6 +77,7 @@ function App() {
   const handleStop = () => invoke("force_stop_recording");
 
   const isActive = isRecording || isTranscribing || !!transcription || !!error;
+  const parsedError = error ? parseError(error) : null;
 
   return (
     <div className="flex items-center justify-center w-screen h-screen">
@@ -118,8 +115,8 @@ function App() {
             </div>
           ) : error ? (
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-sm shrink-0">{parseError(error).icon}</span>
-              <p className="text-xs text-amber-300 truncate m-0">{parseError(error).hint}</p>
+              <span className="text-sm shrink-0">{parsedError?.icon}</span>
+              <p className="text-xs text-amber-300 truncate m-0">{parsedError?.hint}</p>
             </div>
           ) : (
             // Estado idle: ondas atenuadas
