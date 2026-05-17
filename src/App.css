@@ -1,235 +1,28 @@
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
+@import "tailwindcss";
 
-.container {
-  max-width: 480px;
-  margin: 0 auto;
-  padding: 32px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-h1 {
-  text-align: center;
-  margin: 0 0 8px 0;
-}
-
-/* Mode switch */
-.mode-switch {
-  display: flex;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.mode-switch button {
-  flex: 1;
-  padding: 10px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-size: 0.95em;
-  color: #666;
-  transition: background 0.2s, color 0.2s;
-}
-
-.mode-switch button.active {
-  background: #0f0f0f;
-  color: #fff;
-}
-
-/* Settings section */
-.settings-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.settings-section label {
-  font-size: 0.85em;
-  color: #888;
-  font-weight: 500;
-}
-
-.api-key-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 0.9em;
-}
-
-.api-key-status.configured {
-  color: #2a7a2a;
-}
-
-.api-key-missing {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.status-ok {
-  color: #2a7a2a;
-  font-size: 0.9em;
-  margin: 0;
-}
-
-.status-missing {
-  color: #c04000;
-  font-size: 0.9em;
-  margin: 0;
-}
-
-.config-hint {
-  font-size: 0.82em;
-  color: #888;
-  margin: 0;
-  line-height: 1.6;
-}
-
-.config-hint code {
-  display: block;
-  background: #eee;
-  padding: 6px 10px;
-  border-radius: 6px;
-  word-break: break-all;
-  margin-top: 4px;
-  font-size: 0.9em;
-}
-
-.action-btn {
-  padding: 10px 16px;
-  background: #0f0f0f;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.9em;
-  transition: opacity 0.2s;
-  text-align: left;
-}
-
-.action-btn:hover {
-  opacity: 0.8;
-}
-
-.link-btn {
-  background: none;
-  border: none;
-  color: #888;
-  font-size: 0.85em;
-  cursor: pointer;
-  text-decoration: underline;
-  padding: 0;
-}
-
-.model-not-installed {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Divider */
-.divider {
-  border: none;
-  border-top: 1px solid #eee;
-  margin: 4px 0;
-}
-
-/* Main area */
-.hint {
-  text-align: center;
-  color: #888;
-  font-size: 1em;
-  margin: 16px 0;
-}
-
-.recording-indicator {
-  background: rgba(255, 0, 0, 0.08);
-  border: 2px solid red;
-  padding: 24px 40px;
-  border-radius: 12px;
-  text-align: center;
-}
-
-.recording-indicator h2 {
-  color: red;
-  margin: 0 0 8px 0;
-  animation: pulse 1s infinite;
-}
-
-.duration {
-  font-size: 2em;
-  font-weight: bold;
-  font-family: monospace;
-  margin: 0;
-}
-
-.transcribing-indicator {
-  text-align: center;
-  color: #888;
-  padding: 16px;
-  font-size: 1.1em;
-}
-
-.transcription-result {
-  background: #f0f4ff;
-  border: 1px solid #c0cef0;
-  border-radius: 12px;
-  padding: 20px 24px;
-  font-size: 1.05em;
-  line-height: 1.6;
-}
-
-.transcription-result p {
-  margin: 0;
-}
-
-.error-indicator {
-  background: rgba(255, 150, 0, 0.1);
-  border: 1px solid orange;
-  padding: 12px 16px;
-  border-radius: 8px;
-  color: #c07000;
-  font-size: 0.9em;
-}
-
-.error-indicator p {
-  margin: 0;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
+@layer base {
+  body {
+    background-color: #000;
     color: #f6f6f6;
-    background-color: #1a1a1a;
-  }
-
-  .mode-switch { border-color: #333; }
-  .mode-switch button { color: #aaa; }
-  .mode-switch button.active { background: #f6f6f6; color: #0f0f0f; }
-
-  .config-hint code { background: #2a2a2a; }
-  .divider { border-color: #333; }
-
-  .transcription-result {
-    background: #1e2a3a;
-    border-color: #2a3a5a;
   }
 }
+
+@keyframes recording-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 0, 0, 0.25); }
+  50%       { box-shadow: 0 0 0 10px rgba(220, 0, 0, 0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes badge-fade {
+  0%   { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.recording-glow { animation: recording-glow 1.5s ease-in-out infinite; }
+.slide-up       { animation: slide-up 0.2s ease-out; }
+.badge-fade     { animation: badge-fade 2.5s ease-out forwards; }
