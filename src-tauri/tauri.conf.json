@@ -12,9 +12,19 @@
   "app": {
     "windows": [
       {
-        "title": "edrvoz",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "EDR Voz",
+        "width": 260,
+        "height": 80,
+        "decorations": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "transparent": true,
+        "visible": false,
+        "resizable": false,
+        "center": false,
+        "x": 0,
+        "y": 0
       }
     ],
     "security": {

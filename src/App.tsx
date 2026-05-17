@@ -3,24 +3,18 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
-function parseError(msg: string): { icon: string; hint: string | null } {
+function parseError(msg: string): { icon: string; hint: string } {
   if (msg.includes("input device") || msg.includes("No input"))
-    return { icon: "🎙️", hint: "Verifica que el micrófono esté conectado y con permisos." };
+    return { icon: "🎙️", hint: "Sin micrófono" };
   if (msg.includes("API Key") || msg.includes("config.env"))
-    return { icon: "🔑", hint: "Abre el archivo de configuración y agrega tu API Key de OpenAI." };
+    return { icon: "🔑", hint: "API Key no configurada" };
   if (msg.includes("conexión"))
-    return { icon: "🌐", hint: "Verifica tu conexión a internet." };
+    return { icon: "🌐", hint: "Sin conexión" };
   if (msg.includes("No hay audio"))
-    return { icon: "🎤", hint: "Mantén presionado Ctrl+Shift+J mientras hablas." };
+    return { icon: "🎤", hint: "Mantén presionado mientras hablas" };
   if (msg.includes("Modo local"))
-    return { icon: "💻", hint: "Cambia a modo Online (API) o descarga el modelo local." };
-  if (msg.includes("Error de API"))
-    return { icon: "🔴", hint: "Revisa que tu API Key sea válida y tenga crédito disponible." };
-  return { icon: "⚠️", hint: null };
-}
-
-interface Settings {
-  mode: "api" | "local";
+    return { icon: "💻", hint: "Modelo no instalado" };
+  return { icon: "⚠️", hint: msg };
 }
 
 function App() {
@@ -28,29 +22,10 @@ function App() {
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcription, setTranscription] = useState<string | null>(null);
-  const [isPasted, setIsPasted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [settings, setSettings] = useState<Settings>({ mode: "api" });
-  const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
-  const [configPath, setConfigPath] = useState("");
-  const [modelStatus, setModelStatus] = useState<"installed" | "not_installed">("not_installed");
-
-  const loadStatus = () => {
-    invoke<Settings>("get_settings").then(setSettings);
-    invoke<boolean>("get_api_key_status").then(setApiKeyConfigured);
-    invoke<string>("get_config_path").then(setConfigPath);
-    invoke<string>("get_model_status").then((s) =>
-      setModelStatus(s as "installed" | "not_installed")
-    );
-  };
-
-  useEffect(() => {
-    loadStatus();
-  }, []);
 
   useEffect(() => {
     const unlisteners: (() => void)[] = [];
-
     const setup = async () => {
       unlisteners.push(
         await listen("recording-started", () => {
@@ -59,214 +34,115 @@ function App() {
           setTranscription(null);
           setError(null);
         }),
-        await listen("recording-stopped", () => {
-          setIsRecording(false);
-        }),
-        await listen("transcribing", () => {
-          setIsTranscribing(true);
-        }),
+        await listen("recording-stopped", () => setIsRecording(false)),
+        await listen("transcribing", () => setIsTranscribing(true)),
         await listen<string>("transcription-ready", (e) => {
           setIsTranscribing(false);
           setTranscription(e.payload);
-          setIsPasted(true);
-          setTimeout(() => setIsPasted(false), 2500);
+          setTimeout(() => invoke("hide_window"), 2500);
         }),
         await listen<string>("transcription-error", (e) => {
           setIsTranscribing(false);
           setError(e.payload);
+          setTimeout(() => invoke("hide_window"), 4000);
         }),
         await listen<string>("recording-error", (e) => {
           setIsRecording(false);
           setError(e.payload);
+          setTimeout(() => invoke("hide_window"), 4000);
         }),
       );
     };
-
     setup();
     return () => unlisteners.forEach((u) => u());
   }, []);
 
   useEffect(() => {
     if (!isRecording) return;
-    const interval = setInterval(() => {
-      setRecordingDuration((prev) => prev + 0.1);
-    }, 100);
+    const interval = setInterval(() => setRecordingDuration((p) => p + 0.1), 100);
     return () => clearInterval(interval);
   }, [isRecording]);
 
   useEffect(() => {
-    if (!error) return;
-    const timer = setTimeout(() => setError(null), 6000);
-    return () => clearTimeout(timer);
-  }, [error]);
-
-  const MAX_RECORDING_SECS = 60;
-
-  useEffect(() => {
-    if (isRecording && recordingDuration >= MAX_RECORDING_SECS) {
+    if (isRecording && recordingDuration >= 60) {
       invoke("force_stop_recording");
     }
   }, [isRecording, recordingDuration]);
 
-  const handleModeChange = async (mode: "api" | "local") => {
-    setSettings({ mode });
-    await invoke("save_settings", { mode });
+  const handleCancel = () => {
+    invoke("cancel_recording");
+    invoke("hide_window");
   };
 
-  const handleOpenConfig = async () => {
-    try {
-      await invoke("open_config_file");
-      setTimeout(loadStatus, 2000);
-    } catch (e) {
-      setError(e as string);
-    }
-  };
+  const handleStop = () => invoke("force_stop_recording");
 
-  const handleDownloadModel = async () => {
-    try {
-      await invoke("download_model");
-    } catch (e) {
-      setError(e as string);
-    }
-  };
+  const isActive = isRecording || isTranscribing || !!transcription || !!error;
 
   return (
-    <main className="max-w-sm mx-auto px-6 py-8 flex flex-col gap-4">
-      <h1 className="text-center text-2xl font-bold mb-2">EDR Voz</h1>
+    <div className="flex items-center justify-center w-screen h-screen">
+      <div className={`hud flex items-center justify-between px-4 gap-3 ${isActive ? "fade-in" : ""}`}>
 
-      {/* Selector de modo */}
-      <div className="flex border border-gray-700 rounded-lg overflow-hidden">
+        {/* Botón cancelar */}
         <button
-          className={`flex-1 py-2.5 text-sm cursor-pointer transition-colors ${
-            settings.mode === "api"
-              ? "bg-white text-gray-900"
-              : "text-gray-500 hover:bg-gray-900"
-          }`}
-          onClick={() => handleModeChange("api")}
+          className="w-7 h-7 rounded-full flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer text-xs"
+          onClick={handleCancel}
+          title="Cancelar"
         >
-          🌐 Online (API)
+          ✕
         </button>
+
+        {/* Zona central */}
+        <div className="flex-1 flex items-center justify-center min-w-0 overflow-hidden">
+          {isRecording ? (
+            <div className="flex items-center gap-1.5">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="wave-bar" style={{ animationDelay: `${i * 0.1}s` }} />
+              ))}
+              <span className="ml-2 text-xs text-gray-400 font-mono tabular-nums">
+                {recordingDuration.toFixed(1)}s
+              </span>
+            </div>
+          ) : isTranscribing ? (
+            <div className="flex items-center gap-2 text-gray-400">
+              <div className="w-3.5 h-3.5 rounded-full border-2 border-gray-600 border-t-gray-300 animate-spin shrink-0" />
+              <span className="text-xs">Transcribiendo...</span>
+            </div>
+          ) : transcription ? (
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-green-400 text-xs shrink-0">✓</span>
+              <p className="text-xs text-gray-200 truncate m-0">{transcription}</p>
+            </div>
+          ) : error ? (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-sm shrink-0">{parseError(error).icon}</span>
+              <p className="text-xs text-amber-300 truncate m-0">{parseError(error).hint}</p>
+            </div>
+          ) : (
+            // Estado idle: ondas atenuadas
+            <div className="flex items-center gap-1.5">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="wave-bar opacity-20" style={{ animationDelay: `${i * 0.1}s` }} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Botón detener/confirmar */}
         <button
-          className={`flex-1 py-2.5 text-sm cursor-pointer transition-colors ${
-            settings.mode === "local"
-              ? "bg-white text-gray-900"
-              : "text-gray-500 hover:bg-gray-900"
+          className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors shrink-0 text-xs ${
+            isRecording
+              ? "text-white bg-white/15 hover:bg-white/25 cursor-pointer"
+              : "text-gray-700 cursor-default"
           }`}
-          onClick={() => handleModeChange("local")}
+          onClick={isRecording ? handleStop : undefined}
+          disabled={!isRecording}
+          title="Detener y transcribir"
         >
-          💻 Local
+          ✓
         </button>
+
       </div>
-
-      {/* Configuración según modo */}
-      {settings.mode === "api" ? (
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-medium text-gray-500">API Key de OpenAI</label>
-          {apiKeyConfigured ? (
-            <div className="flex items-center justify-between text-sm text-green-400">
-              <span>✅ Configurada correctamente</span>
-              <button
-                className="text-gray-500 text-xs underline cursor-pointer"
-                onClick={handleOpenConfig}
-              >
-                Editar
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <p className="text-sm text-red-400 m-0">❌ No configurada</p>
-              <p className="text-xs text-gray-500 leading-relaxed m-0">
-                Archivo de configuración:
-                <code className="block bg-gray-900 px-2.5 py-1.5 rounded-md mt-1 break-all text-gray-300">
-                  {configPath}
-                </code>
-              </p>
-              <button
-                className="px-4 py-2.5 bg-white text-gray-900 text-sm rounded-lg hover:opacity-80 transition-opacity text-left cursor-pointer"
-                onClick={handleOpenConfig}
-              >
-                📝 Abrir archivo de configuración
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-medium text-gray-500">Modelo local (Whisper small)</label>
-          {modelStatus === "installed" ? (
-            <p className="text-sm text-green-400 m-0">✅ Modelo instalado</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <p className="text-sm text-red-400 m-0">❌ Modelo no instalado</p>
-              <button
-                className="px-4 py-2.5 bg-white text-gray-900 text-sm rounded-lg hover:opacity-80 transition-opacity text-left cursor-pointer"
-                onClick={handleDownloadModel}
-              >
-                ⬇ Descargar modelo (~466 MB)
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      <hr className="border-t border-gray-800 my-1" />
-
-      {/* Error */}
-      {error && (() => {
-        const { icon, hint } = parseError(error);
-        return (
-          <div className="flex items-start gap-3 bg-amber-950 border border-amber-700 px-4 py-3 rounded-lg text-sm">
-            <span className="text-base mt-0.5 shrink-0">{icon}</span>
-            <div className="flex-1 min-w-0">
-              <p className="m-0 text-amber-400 font-medium">{error}</p>
-              {hint && <p className="m-0 mt-1 text-amber-600 text-xs">{hint}</p>}
-            </div>
-            <button
-              className="text-amber-700 hover:text-amber-400 cursor-pointer transition-colors shrink-0 text-base leading-none"
-              onClick={() => setError(null)}
-              aria-label="Cerrar"
-            >
-              ✕
-            </button>
-          </div>
-        );
-      })()}
-
-      {/* Estado principal */}
-      {isRecording ? (
-        <div className="recording-glow bg-red-950 border-2 border-red-500 p-6 rounded-xl text-center">
-          <h2 className="text-red-400 text-xl font-semibold m-0 mb-2 animate-pulse">
-            🎤 Grabando...
-          </h2>
-          <p className="text-4xl font-bold font-mono m-0 tracking-wide text-white">
-            {recordingDuration.toFixed(1)}s
-          </p>
-          {recordingDuration >= MAX_RECORDING_SECS - 10 && (
-            <p className="text-amber-400 text-xs mt-2 m-0">
-              Límite: {Math.max(0, MAX_RECORDING_SECS - Math.floor(recordingDuration))}s restantes
-            </p>
-          )}
-        </div>
-      ) : isTranscribing ? (
-        <div className="flex flex-col items-center gap-3 py-6 text-gray-500">
-          <div className="w-7 h-7 rounded-full border-[3px] border-gray-700 border-t-gray-400 animate-spin" />
-          <p className="m-0 text-sm">Transcribiendo...</p>
-        </div>
-      ) : transcription ? (
-        <div className="relative bg-gray-900 border border-gray-700 rounded-xl px-6 py-5 leading-relaxed slide-up text-gray-100">
-          {isPasted && (
-            <span className="absolute -top-2.5 right-3.5 bg-green-700 text-white text-xs font-semibold px-3 py-0.5 rounded-full badge-fade">
-              ✓ Pegado
-            </span>
-          )}
-          <p className="m-0">{transcription}</p>
-        </div>
-      ) : (
-        <p className="text-center text-gray-600 text-sm my-4">
-          Presiona Ctrl+Shift+J para iniciar la grabación
-        </p>
-      )}
-    </main>
+    </div>
   );
 }
 

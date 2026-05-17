@@ -8,7 +8,7 @@ mod transcription;
 use audio_capture::AudioCapture;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{LazyLock, Mutex};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 
@@ -60,6 +60,19 @@ fn get_model_status() -> &'static str {
 #[tauri::command]
 async fn download_model() -> Result<(), String> {
     Err("Próximamente disponible".to_string())
+}
+
+#[tauri::command]
+fn hide_window(app: tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.hide();
+    }
+}
+
+#[tauri::command]
+fn cancel_recording() {
+    drop(AUDIO.lock().unwrap().take());
+    LAST_BUFFER.lock().unwrap().clear();
 }
 
 async fn do_transcribe(app: tauri::AppHandle, buffer: Vec<f32>, session: u32) {
@@ -115,6 +128,10 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
+                        // Mostrar el HUD sin robar el foco de la ventana activa del usuario
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                        }
                         let mut audio = AUDIO.lock().unwrap();
                         if audio.is_none() {
                             match AudioCapture::new() {
@@ -160,6 +177,8 @@ pub fn run() {
             get_recording_buffer,
             clear_recording,
             force_stop_recording,
+            hide_window,
+            cancel_recording,
         ])
         .setup(|app| {
             env_logger::Builder::new()
@@ -168,6 +187,23 @@ pub fn run() {
                 .init();
             log::info!("EDR Voz iniciando");
             settings::ensure_config_file(&app.handle());
+
+            let window = app.get_webview_window("main").expect("ventana main no encontrada");
+
+            // Forzar fondo transparente en WebView2 (elimina el cuadrado semitransparente)
+            let _ = window.set_background_color(Some(tauri::webview::Color(0, 0, 0, 0)));
+
+            // Posicionar centrado horizontalmente, 80px sobre la taskbar
+            if let Ok(Some(monitor)) = window.primary_monitor() {
+                let size = monitor.size();
+                let scale = monitor.scale_factor();
+                let win_w = 260.0_f64;
+                let win_h = 80.0_f64;
+                let x = (size.width as f64 / scale - win_w) / 2.0;
+                let y = size.height as f64 / scale - win_h - 80.0;
+                let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+            }
+
             let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyJ);
             if let Err(e) = app.global_shortcut().register(shortcut) {
                 eprintln!("Error al registrar hotkey: {}", e);
