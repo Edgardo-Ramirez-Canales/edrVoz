@@ -1,9 +1,12 @@
 use crate::settings::TranscriptionMode;
+use std::sync::LazyLock;
+
+static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
 // Contrato que debe cumplir cualquier implementación de transcripción.
 // Para agregar modo local real: implementar este trait en LocalTranscriber.
 trait Transcriber {
-    async fn transcribe(&self, samples: Vec<f32>) -> Result<String, String>;
+    async fn transcribe(&self, samples: &[f32]) -> Result<String, String>;
 }
 
 pub struct ApiTranscriber {
@@ -13,10 +16,9 @@ pub struct ApiTranscriber {
 pub struct LocalTranscriber;
 
 impl Transcriber for ApiTranscriber {
-    async fn transcribe(&self, samples: Vec<f32>) -> Result<String, String> {
+    async fn transcribe(&self, samples: &[f32]) -> Result<String, String> {
         let wav_bytes = encode_wav(&samples)?;
 
-        let client = reqwest::Client::new();
         let part = reqwest::multipart::Part::bytes(wav_bytes)
             .file_name("audio.wav")
             .mime_str("audio/wav")
@@ -27,7 +29,7 @@ impl Transcriber for ApiTranscriber {
             .text("language", "es")
             .part("file", part);
 
-        let response = client
+        let response = HTTP_CLIENT
             .post("https://api.openai.com/v1/audio/transcriptions")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .multipart(form)
@@ -54,7 +56,7 @@ impl Transcriber for ApiTranscriber {
 }
 
 impl Transcriber for LocalTranscriber {
-    async fn transcribe(&self, _samples: Vec<f32>) -> Result<String, String> {
+    async fn transcribe(&self, _samples: &[f32]) -> Result<String, String> {
         // Para implementar: cargar modelo Whisper local (ej. whisper-rs) y procesar aquí.
         Err("Modo local no disponible. Descarga el modelo primero.".to_string())
     }
@@ -63,7 +65,7 @@ impl Transcriber for LocalTranscriber {
 /// Punto de entrada público. Selecciona la implementación según el modo
 /// y delega — lib.rs no necesita saber qué transcriber se usa.
 pub async fn run(
-    samples: Vec<f32>,
+    samples: &[f32],
     mode: &TranscriptionMode,
     api_key: Option<String>,
 ) -> Result<String, String> {

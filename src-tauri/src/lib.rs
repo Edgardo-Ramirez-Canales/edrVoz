@@ -9,7 +9,7 @@ mod transcription;
 
 use audio_capture::AudioCapture;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
@@ -54,7 +54,7 @@ fn apply_pill_region(window: &tauri::WebviewWindow, scale: f64) {
 }
 
 static AUDIO: LazyLock<Mutex<Option<AudioCapture>>> = LazyLock::new(|| Mutex::new(None));
-static LAST_BUFFER: LazyLock<Mutex<Vec<f32>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+static LAST_BUFFER: LazyLock<Mutex<Arc<Vec<f32>>>> = LazyLock::new(|| Mutex::new(Arc::new(Vec::new())));
 static SESSION: AtomicU32 = AtomicU32::new(0);
 
 #[tauri::command]
@@ -123,7 +123,7 @@ fn hide_window(app: tauri::AppHandle) {
 #[tauri::command]
 fn cancel_recording() {
     drop(AUDIO.lock().unwrap().take());
-    LAST_BUFFER.lock().unwrap().clear();
+    *LAST_BUFFER.lock().unwrap() = Arc::new(Vec::new());
 
     #[cfg(target_os = "windows")]
     native_hud::hide();
@@ -137,7 +137,7 @@ fn hide_native_hud_after(ms: u64) {
     });
 }
 
-async fn do_transcribe(app: tauri::AppHandle, buffer: Vec<f32>, session: u32) {
+async fn do_transcribe(app: tauri::AppHandle, buffer: Arc<Vec<f32>>, session: u32) {
     let s = settings::load(&app);
     let mode = format!("{:?}", s.mode).to_lowercase();
     log::info!(
@@ -147,7 +147,7 @@ async fn do_transcribe(app: tauri::AppHandle, buffer: Vec<f32>, session: u32) {
 
     let start = std::time::Instant::now();
     let api_key = settings::load_api_key(&app);
-    match transcription::run(buffer, &s.mode, api_key).await {
+    match transcription::run(buffer.as_slice(), &s.mode, api_key).await {
         Ok(text) => {
             let elapsed = start.elapsed().as_millis();
             log::info!(
@@ -174,30 +174,36 @@ async fn do_transcribe(app: tauri::AppHandle, buffer: Vec<f32>, session: u32) {
     }
 }
 
+fn prepare_transcription(app: &tauri::AppHandle, capture: AudioCapture, session: u32) -> Arc<Vec<f32>> {
+    let buffer = Arc::new(capture.stop_and_get_buffer());
+    log::info!("[sesión {session}] Grabación detenida — {} samples", buffer.len());
+    *LAST_BUFFER.lock().unwrap() = buffer.clone();
+    let _ = app.emit("recording-stopped", ());
+    let _ = app.emit("transcribing", ());
+    #[cfg(target_os = "windows")]
+    native_hud::show_transcribing();
+    buffer
+}
+
 #[tauri::command]
 async fn force_stop_recording(app: tauri::AppHandle) {
     let capture = AUDIO.lock().unwrap().take();
     if let Some(capture) = capture {
         let session = SESSION.load(Ordering::Relaxed);
         log::warn!("[sesión {session}] Grabación detenida automáticamente por límite de tiempo");
-        let buffer = capture.stop_and_get_buffer();
-        *LAST_BUFFER.lock().unwrap() = buffer.clone();
-        let _ = app.emit("recording-stopped", ());
-        let _ = app.emit("transcribing", ());
-        #[cfg(target_os = "windows")]
-        native_hud::show_transcribing();
+        let buffer = prepare_transcription(&app, capture, session);
         do_transcribe(app, buffer, session).await;
     }
 }
 
 #[tauri::command]
 fn get_recording_buffer() -> Vec<f32> {
-    LAST_BUFFER.lock().unwrap().clone()
+    LAST_BUFFER.lock().unwrap().as_ref().clone()
 }
 
 #[tauri::command]
 fn clear_recording() {
-    LAST_BUFFER.lock().unwrap().clear();
+    *LAST_BUFFER.lock().unwrap() = Arc::new(Vec::new());
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -218,7 +224,7 @@ pub fn run() {
                         if audio.is_none() {
                             match AudioCapture::new() {
                                 Ok(capture) => {
-                                    let session = SESSION.fetch_add(1, Ordering::Relaxed);
+                                    let session = SESSION.fetch_add(1, Ordering::Relaxed) + 1;
                                     log::info!("[sesión {session}] Grabación iniciada");
                                     *audio = Some(capture);
                                     let _ = app.emit("recording-started", ());
@@ -238,17 +244,7 @@ pub fn run() {
                         let capture = AUDIO.lock().unwrap().take();
                         if let Some(capture) = capture {
                             let session = SESSION.load(Ordering::Relaxed);
-                            let buffer = capture.stop_and_get_buffer();
-                            log::info!(
-                                "[sesión {session}] Grabación detenida — {} samples",
-                                buffer.len()
-                            );
-                            *LAST_BUFFER.lock().unwrap() = buffer.clone();
-                            let _ = app.emit("recording-stopped", ());
-                            let _ = app.emit("transcribing", ());
-                            #[cfg(target_os = "windows")]
-                            native_hud::show_transcribing();
-
+                            let buffer = prepare_transcription(app, capture, session);
                             let app_clone = app.clone();
                             tauri::async_runtime::spawn(async move {
                                 do_transcribe(app_clone, buffer, session).await;
