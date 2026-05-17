@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod audio_capture;
+mod paste;
 mod settings;
 mod transcription;
 
@@ -103,6 +104,7 @@ pub fn run() {
                                 let api_key = settings::load_api_key(&app_clone);
                                 match transcription::transcribe(buffer, &s.mode, api_key.as_deref()).await {
                                     Ok(text) => {
+                                        paste::paste_text(&text);
                                         let _ = app_clone.emit("transcription-ready", text);
                                     }
                                     Err(e) => {

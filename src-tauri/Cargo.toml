@@ -27,4 +27,6 @@ cpal = "0.17"
 reqwest = { version = "0.12", features = ["multipart", "json"] }
 hound = "3.5"
 tokio = { version = "1", features = ["rt-multi-thread"] }
+arboard = "3"
+enigo = "0.3"
 
