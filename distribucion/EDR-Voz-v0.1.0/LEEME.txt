@@ -1,0 +1,70 @@
+EDR Voz v0.1.0 — Guía de instalación y uso
+==========================================
+
+¿Qué hace esta aplicación?
+---------------------------
+Dictado por voz para Windows. Presiona Ctrl+Shift+J, habla, suelta las
+teclas y el texto transcrito se escribe automáticamente donde tengas
+el cursor — en cualquier aplicación (Word, Chrome, Notepad, etc.).
+
+
+Requisitos
+----------
+- Windows 10 o Windows 11
+- Conexión a internet
+- API Key de OpenAI (incluida en este paquete por quien lo compartió)
+
+
+Instalación (no requiere instalador)
+-------------------------------------
+1. Descomprime esta carpeta en cualquier lugar de tu computadora.
+   Ejemplo: C:\EDR-Voz\
+
+2. Abre el archivo config.env con el Bloc de notas.
+   Verás esta línea:
+       OPENAI_API_KEY=
+   Escribe tu API Key después del signo igual, sin espacios:
+       OPENAI_API_KEY=sk-...
+
+3. Guarda el archivo y ciérralo.
+
+4. Ejecuta edrvoz.exe con doble clic.
+
+   IMPORTANTE: edrvoz.exe y config.env deben estar siempre
+   en la misma carpeta. No muevas uno sin el otro.
+
+
+Uso
+---
+1. Con la app abierta, coloca el cursor donde quieras escribir
+   (un documento, un chat, un campo de texto, cualquier lugar).
+
+2. Mantén presionadas las teclas Ctrl + Shift + J y habla.
+   La app muestra "Grabando..." con un contador de tiempo.
+
+3. Suelta las teclas cuando termines de hablar.
+   La app transcribe el audio y pega el texto automáticamente.
+
+Límite por grabación: 60 segundos.
+Idioma reconocido: español.
+
+
+Solución de problemas
+----------------------
+"API Key no configurada"
+→ Abre config.env y verifica que la línea OPENAI_API_KEY tenga
+  un valor que empiece con sk-
+
+"No se puede abrir la aplicación"
+→ Asegúrate de tener Windows 10/11 actualizado.
+→ Si aparece un aviso de seguridad de Windows, haz clic en
+  "Más información" y luego "Ejecutar de todas formas".
+
+La app abre pero el texto no se pega
+→ Asegúrate de que el cursor esté activo en algún campo de texto
+  ANTES de presionar Ctrl+Shift+J.
+
+
+Contacto
+--------
+¿Problemas o comentarios? Escribe a: ramirezedgardo92@gmail.com
